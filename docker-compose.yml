@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:12.8-alpine
+    container_name: todo_list
+    volumes:
+      - /pg_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=todoadmin
+      - POSTGRES_PASSWORD=todopass
+      - POSTGRES_DB=tododb
+    ports:
+      - "5432:5432"
+    restart: always
