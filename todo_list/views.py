@@ -117,6 +117,6 @@ def logout():
 def protected():
     return jsonify(
         id=current_user.id,
-        full_name=current_user.email,
+        email=current_user.email,
         username=current_user.username,
     )
