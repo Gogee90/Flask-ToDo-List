@@ -1,4 +1,6 @@
 from .models import Tasks, User, db
+from .serializers import task_schema, tasks_schema
+from .decorators import error_message
 from flask import jsonify
 from flask import request
 from flask_jwt_extended import (
@@ -35,34 +37,33 @@ def check_if_token_in_blacklist(data, decrypted_token):
     return jti in blacklist
 
 
+@error_message
 @jwt_required()
 def list_create_update_destroy_tasks():
 
-    tasks = Tasks.query.filter(Tasks.user_id == current_user.id)
+    tasks = Tasks()
 
-    try:
-        if request.method == "POST":
-            task = Tasks(**request.json)
-            db.session.add(task)
-            db.session.commit()
-            return jsonify([task.serialized_data]), 200
-        if request.method == "PATCH":
-            task = Tasks.query.filter(Tasks.id == request.json["id"])
-            task.update(request.json)
-            db.session.commit()
-            return jsonify([task.first().serialized_data]), 200
-        if request.method == "DELETE":
-            task = Tasks.query.filter(Tasks.id == request.json["id"])
-            task.delete()
-            db.session.commit()
-            return jsonify({"id": request.json["id"]}), 200
+    if request.method == "POST":
+        task = tasks.create(**request.json)
+        task.user_id = current_user.id
+        db.session.add(task)
+        db.session.commit()
+        return jsonify(task_schema.dump(task)), 200
+    if request.method == "PATCH":
+        task_to_update = tasks.patch(**request.json)
+        db.session.commit()
+        return jsonify(task_schema.dump(task_to_update)), 200
+    if request.method == "DELETE":
+        tasks.destroy(request.json["id"])
+        db.session.commit()
+        return jsonify({"id": request.json["id"]}), 200
 
-    except Exception as e:
-        return jsonify({"error": type(e).__name__, "error_description": str(e)}), 500
-
-    return jsonify([task.serialized_data for task in tasks]), 200
+    return jsonify(
+        tasks_schema.dump(tasks.query.filter(Tasks.user_id == current_user.id))
+    )
 
 
+@error_message
 def create_user():
     data = request.get_json()
     if data:
@@ -77,46 +78,42 @@ def create_user():
         return jsonify(new_user.serialized_data), 200
 
 
+@error_message
 def login():
 
     auth_data = {}
 
-    try:
-        data = request.get_json()
-        encoded_password = data["password"].encode("utf8")
-        user = User.query.filter(User.username == data["username"]).first()
-        elapsed_time = datetime.timedelta(minutes=40)
-        if bcrypt.checkpw(encoded_password, user.password.encode("utf8")):
-            auth_data["expires_in"] = str(elapsed_time)
-            auth_data["refresh_token"] = create_refresh_token(
-                identity=user.username, expires_delta=elapsed_time
-            )
-            auth_data["access_token"] = create_access_token(
-                identity=user.username, expires_delta=elapsed_time
-            )
-            auth_data["token_type"] = "Bearer"
-            return jsonify(auth_data), 200
-
-    except Exception as e:
-        return jsonify({"error": type(e).__name__, "error_description": str(e)}), 500
+    data = request.get_json()
+    encoded_password = data["password"].encode("utf8")
+    user = User.query.filter(User.username == data["username"]).first()
+    elapsed_time = datetime.timedelta(minutes=40)
+    if bcrypt.checkpw(encoded_password, user.password.encode("utf8")):
+        auth_data["expires_in"] = str(elapsed_time)
+        auth_data["refresh_token"] = create_refresh_token(
+            identity=user.username, expires_delta=elapsed_time
+        )
+        auth_data["access_token"] = create_access_token(
+            identity=user.username, expires_delta=elapsed_time
+        )
+        auth_data["token_type"] = "Bearer"
+        return jsonify(auth_data), 200
 
     return jsonify({"error": "Credentials either wrong or were not provided!"}), 400
 
 
+@error_message
 @jwt_required()
 def logout():
-    try:
-        jti = get_jwt()["jti"]
-        blacklist.add(jti)
-        return jsonify(()), 204
-    except Exception as e:
-        return jsonify({"error": type(e).__name__, "error_description": str(e)}), 500
+    jti = get_jwt()["jti"]
+    blacklist.add(jti)
+    return jsonify(()), 204
 
 
+@error_message
 @jwt_required()
 def protected():
     return jsonify(
         id=current_user.id,
-        email=current_user.email,
+        full_name=current_user.email,
         username=current_user.username,
     )
